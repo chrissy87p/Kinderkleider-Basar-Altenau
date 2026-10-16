@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kinderkleider Basar Altenau – Kasse</title>
+<style>
+:root{--green:#176b50;--bg:#f4f7f5;--ink:#1c2823;--line:#d9e3dd;--red:#a32626}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px system-ui,-apple-system,sans-serif}
+header{background:var(--green);color:white;padding:18px 16px}header h1{font-size:21px;margin:0 0 4px}header p{margin:0;font-size:13px;opacity:.9}
+main{max-width:900px;margin:auto;padding:14px}nav{display:flex;gap:8px;overflow:auto;padding:2px 0 12px}
+button,.tab{border:0;border-radius:10px;padding:11px 14px;font:inherit;cursor:pointer;background:#e3ebe6;color:var(--ink)}
+button.primary,.tab.active{background:var(--green);color:white}button.danger{background:#f8e3e3;color:var(--red)}button:disabled{opacity:.45}
+.panel{background:white;border:1px solid var(--line);border-radius:14px;padding:15px;margin:0 0 14px;box-shadow:0 2px 8px #173b2810}
+h2{font-size:19px;margin:0 0 12px}h3{font-size:16px;margin:14px 0 8px}
+label{display:block;font-size:13px;font-weight:650;margin:10px 0 5px}input,select{width:100%;font:inherit;border:1px solid #bdccc2;border-radius:9px;padding:11px;background:white}
+.row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.muted{color:#5e6d64;font-size:13px}.status{padding:10px;border-radius:9px;background:#eef5f0;margin:10px 0;font-size:14px}.status.err{background:#fff0ef;color:var(--red)}
+.big{font-size:26px;font-weight:750}.item{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}.item:last-child{border-bottom:0}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{text-align:left;padding:8px 5px;border-bottom:1px solid var(--line)}.scroll{overflow:auto}
+.hidden{display:none!important}
+@media(max-width:520px){.row{grid-template-columns:1fr 1fr}button{padding:10px 12px}.panel{padding:12px}}
+</style>
+</head>
+<body>
+<header><h1>👕 Kinderkleider Basar Altenau</h1><p>Kassen-App · Veranstaltung 01.11.2026</p></header>
+<main>
+<div id="status" class="status">Verbinde mit der Basar-Datenbank …</div>
+<div class="panel">
+ <div class="row">
+  <div><label for="register">Kasse</label><select id="register"><option value="1">Kasse 1</option><option value="2">Kasse 2</option></select></div>
+  <div><label for="mode">Erfassung</label><select id="mode"><option value="manual">Plan B – manuell</option><option value="scan">Foto/Scanner (Test)</option></select></div>
+ </div>
+ <p class="muted">Plan B erfasst bewusst nur Teilnehmernummer und Preis. Die Kasse bucht Artikel erst nach bestätigter Barzahlung.</p>
+</div>
+<nav>
+<button class="tab active" data-tab="cash">Kasse</button><button class="tab" data-tab="control">Kontrolle</button><button class="tab" data-tab="settle">Abrechnung</button><button class="tab" data-tab="settings">Einstellungen</button>
+</nav>
+<section id="cash" class="page">
+ <div class="panel"><h2>Artikel erfassen</h2>
+ <div class="row">
+  <div><label for="participant">Teilnehmernummer</label><select id="participant"></select></div>
+  <div><label for="price">Preis (€)</label><input id="price" type="number" inputmode="decimal" min="0.5" step="0.5" placeholder="z. B. 3,00"></div>
+ </div>
+ <div id="scanFields" class="hidden">
+  <div class="row"><div><label for="size">Größe (optional)</label><input id="size" placeholder="z. B. 104"></div><div><label for="desc">Beschreibung (optional)</label><input id="desc" placeholder="z. B. T-Shirt"></div></div>
+  <label for="photo">Etikett fotografieren (Erkennungshilfe)</label><input id="photo" type="file" accept="image/*" capture="environment">
+  <p class="muted">Die Fotoerkennung ist in dieser ersten Version noch nicht automatisch aktiv. Bitte Nummer und Preis vom Etikett ablesen und prüfen.</p>
+  <label><input id="twoX" type="checkbox" style="width:auto"> Auf dem Etikett steht „2x“ – bitte prüfen (Preis wird nicht verdoppelt).</label>
+ </div>
+ <div class="actions"><button id="add" class="primary">Artikel zum Warenkorb</button><button id="clear" class="danger">Warenkorb leeren</button></div>
+ </div>
+ <div class="panel"><h2>Warenkorb</h2><div id="cartList" class="muted">Noch keine Artikel.</div>
+ <div class="item"><strong>Gesamt</strong><span class="big" id="total">0,00 €</span></div>
+ <label for="cashGiven">Bargeld erhalten (€)</label><input id="cashGiven" type="number" inputmode="decimal" step="0.5" placeholder="Erhaltener Betrag">
+ <div class="item"><strong>Rückgeld</strong><span class="big" id="change">–</span></div>
+ <div class="actions"><button id="pay" class="primary" disabled>Barzahlung abschließen</button></div>
+ <p class="muted">Erst beim Abschließen der Zahlung werden die Artikel gespeichert.</p></div>
+</section>
+<section id="control" class="page hidden">
+ <div class="panel"><h2>Kassenkontrolle</h2><div id="totals" class="muted">Lade Umsätze …</div><div class="actions"><button id="refresh" class="primary">Aktualisieren</button></div></div>
+</section>
+<section id="settle" class="page hidden">
+ <div class="panel"><h2>Teilnehmer-Abrechnung</h2><label for="settleNo">Teilnehmernummer</label><select id="settleNo"></select><div id="settlement" class="muted">Teilnehmer auswählen.</div><div class="actions"><button id="csv" class="primary">CSV-Abrechnung herunterladen</button></div></div>
+</section>
+<section id="settings" class="page hidden">
+ <div class="panel"><h2>Einstellungen</h2><label for="commission">Provision (%)</label><input id="commission" type="number" min="0" max="100" step="0.5" value="10"><div class="actions"><button id="saveCommission" class="primary">Provision speichern</button></div><p class="muted">Diese Version verbindet sich mit dem vorhandenen Supabase-Projekt. Verwende den Publishable Key, niemals einen Secret-/Service-Role-Key.</p></div>
+</section>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL='https://zljjnqsvclagkneehmsf.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY='sb_publishable_RbEPlTlN884HdMUpAcNkRw_ucThIbzF';
+const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
+let cart=[], participants=[], sales=[], commission=10, connected=false;
+const $=id=>document.getElementById(id);
+const euro=n=>(Number(n)||0).toLocaleString('de-DE',{style:'currency',currency:'EUR'});
+const cents=n=>Math.round((Number(n)||0)*100);
+function say(msg,err=false){$('status').textContent=msg;$('status').className='status'+(err?' err':'')}
+function fillSelect(el,includeInactive=false){el.innerHTML='';for(let n=1;n<=53;n++){const p=participants.find(x=>Number(x.no)===n);const o=document.createElement('option');o.value=n;o.textContent=`${n}${p&&p.name?' – '+p.name: ' – frei / nicht belegt'}`;if(!p||p.active===false)o.disabled=true;el.appendChild(o)}}
+async function connect(){
+ try{
+  const {data:auth}=await sb.auth.getSession();
+  if(!auth.session){const {error}=await sb.auth.signInAnonymously();if(error)throw error}
+  const [p,s,st]=await Promise.all([
+   sb.from('participants').select('*').order('no'),
+   sb.from('sales').select('*').order('created_at',{ascending:false}).limit(5000),
+   sb.from('settings').select('*').limit(1)
+  ]);
+  if(p.error)throw p.error;if(s.error)throw s.error;
+  participants=p.data||[];sales=(s.data||[]).filter(x=>x.payment_status!=='cancelled');
+  if(st.data&&st.data[0]&&st.data[0].commission_percent!=null)commission=Number(st.data[0].commission_percent);
+  $('commission').value=commission;fillSelect($('participant'));fillSelect($('settleNo'));connected=true;say('Mit der Datenbank verbunden. Prüfe die Teilnehmerliste vor dem Einsatz.');renderCart();renderTotals();renderSettlement();
+  sb.channel('sales-live').on('postgres_changes',{event:'*',schema:'public',table:'sales'},async()=>{await loadSales()}).subscribe();
+ }catch(e){connected=false;say('Verbindung fehlgeschlagen: '+(e.message||e)+' Prüfe Supabase Anonymous Sign-ins und Datenbankrechte.',true)}
+}
+async function loadSales(){const {data,error}=await sb.from('sales').select('*').order('created_at',{ascending:false}).limit(5000);if(!error){sales=(data||[]).filter(x=>x.payment_status!=='cancelled');renderTotals();renderSettlement()}}
+function centsTotal(){return cart.reduce((a,x)=>a+cents(x.price),0)}
+function renderCart(){
+ const el=$('cartList');el.innerHTML='';
+ if(!cart.length)el.textContent='Noch keine Artikel.';
+ cart.forEach((x,i)=>{const d=document.createElement('div');d.className='item';d.innerHTML=`<span>Nr. ${x.participant_no}${x.description?' · '+escapeHtml(x.description):''}${x.size?' · Gr. '+escapeHtml(x.size):''}${x.detected_2x?' · ⚠️ 2x prüfen':''}<br><small>${escapeHtml(x.scan_method==='manual'?'Manuell':'Scanner')}</small></span><span>${euro(x.price)} <button class="danger" data-remove="${i}">×</button></span>`;el.appendChild(d)});
+ el.querySelectorAll('[data-remove]').forEach(b=>b.onclick=()=>{cart.splice(Number(b.dataset.remove),1);renderCart()});
+ $('total').textContent=euro(centsTotal()/100);updateChange();$('pay').disabled=!cart.length||!connected;
+}
+function updateChange(){const paid=Number($('cashGiven').value);const t=centsTotal()/100;$('change').textContent=$('cashGiven').value===''?'–':euro(paid-t);$('pay').disabled=!cart.length||!connected||!Number.isFinite(paid)||paid<t}
+function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+$('mode').onchange=()=>{$('scanFields').classList.toggle('hidden',$('mode').value!=='scan')};
+$('add').onclick=()=>{
+ const no=Number($('participant').value),price=Number($('price').value),p=participants.find(x=>Number(x.no)===no);
+ if(!p||p.active===false){say('Diese Teilnehmernummer ist nicht aktiv. Bitte Nummer prüfen.',true);return}
+ if(!(price>0)||Math.abs(price*2-Math.round(price*2))>0.001){say('Bitte einen gültigen Preis in 0,50-€-Schritten eingeben.',true);return}
+ cart.push({participant_no:no,price:Number(price.toFixed(2)),size:$('mode').value==='scan'?$('size').value.trim():null,description:$('mode').value==='scan'?$('desc').value.trim():null,register_no:Number($('register').value),payment_status:'paid',scan_method:$('mode').value==='scan'?'scanner':'manual',detected_2x:$('mode').value==='scan'&&$('twoX').checked});
+ $('price').value='';$('size').value='';$('desc').value='';$('twoX').checked=false;renderCart();say('Artikel im Warenkorb. Noch nicht gebucht.');
+};
+$('clear').onclick=()=>{cart=[];$('cashGiven').value='';renderCart()};
+$('cashGiven').oninput=updateChange;
+$('pay').onclick=async()=>{
+ if(!cart.length)return;
+ const given=Number($('cashGiven').value);if(given<centsTotal()/100)return;
+ const {error}=await sb.from('sales').insert(cart.map(x=>({...x,created_at:new Date().toISOString()})));
+ if(error){say('Zahlung konnte nicht gespeichert werden: '+error.message,true);return}
+ const change=given-centsTotal()/100;cart=[];$('cashGiven').value='';renderCart();await loadSales();say('Zahlung gespeichert. Rückgeld: '+euro(change));
+};
+document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('.page').forEach(x=>x.classList.toggle('hidden',x.id!==b.dataset.tab));if(b.dataset.tab==='control')renderTotals();if(b.dataset.tab==='settle')renderSettlement()});
+function renderTotals(){
+ const sum=n=>sales.filter(x=>Number(x.register_no)===n).reduce((a,x)=>a+cents(x.price),0)/100;
+ const all=sales.reduce((a,x)=>a+cents(x.price),0)/100;
+ $('totals').innerHTML=`<div class="item"><span>Kasse 1</span><strong>${euro(sum(1))}</strong></div><div class="item"><span>Kasse 2</span><strong>${euro(sum(2))}</strong></div><div class="item"><strong>Gesamtumsatz</strong><span class="big">${euro(all)}</span></div><p>${sales.length} gespeicherte Artikel</p>`;
+}
+$('refresh').onclick=loadSales;
+function renderSettlement(){
+ const no=Number($('settleNo').value||$('participant').value||0),p=participants.find(x=>Number(x.no)===no);
+ const rows=sales.filter(x=>Number(x.participant_no)===no);const gross=rows.reduce((a,x)=>a+cents(x.price),0)/100;const fee=Math.round(gross*commission)/100;const payout=gross-fee;
+ $('settlement').innerHTML=`<p><strong>${p?escapeHtml(p.name||'Teilnehmer '+no):'Teilnehmer '+no}</strong></p><p>${rows.length} verkaufte Artikel</p><div class="item"><span>Brutto</span><strong>${euro(gross)}</strong></div><div class="item"><span>Provision (${commission} %)</span><strong>− ${euro(fee)}</strong></div><div class="item"><strong>Auszahlung</strong><span class="big">${euro(payout)}</span></div>`;
+}
+$('settleNo').onchange=renderSettlement;
+$('saveCommission').onclick=async()=>{
+ const v=Number($('commission').value);if(v<0||v>100){say('Provision muss zwischen 0 und 100 liegen.',true);return}
+ const {data,error}=await sb.from('settings').select('*').limit(1);
+ if(error){say('Einstellungen konnten nicht gelesen werden: '+error.message,true);return}
+ if(data&&data[0]){const r=await sb.from('settings').update({commission_percent:v}).eq('id',data[0].id);if(r.error){say('Speichern fehlgeschlagen: '+r.error.message,true);return}}
+ commission=v;renderSettlement();say('Provision aktualisiert.');
+};
+$('csv').onclick=()=>{
+ const no=Number($('settleNo').value),p=participants.find(x=>Number(x.no)===no),rows=sales.filter(x=>Number(x.participant_no)===no);
+ const gross=rows.reduce((a,x)=>a+cents(x.price),0)/100;const fee=Math.round(gross*commission)/100;
+ const lines=[['Teilnehmernummer','Name','Datum','Kasse','Preis EUR','Größe','Beschreibung','Erfassung'],...rows.map(x=>[no,p?.name||'',x.created_at||'',x.register_no,x.price,x.size||'',x.description||'',x.scan_method||'manual']),[],['Brutto',gross],['Provision Prozent',commission],['Provision EUR',fee],['Auszahlung EUR',gross-fee]];
+ const csv=lines.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(';')).join('\r\n');
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'}));a.download=`Abrechnung_Teilnehmer_${no}.csv`;a.click();URL.revokeObjectURL(a.href)
+};
+connect();
+</script>
+</body></html>
