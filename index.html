@@ -83,7 +83,7 @@ table{width:100%;border-collapse:collapse;font-size:14px}td,th{text-align:left;p
 const SUPABASE_URL='https://zljjnqsvclagkneehmsf.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY='sb_publishable_RbEPlTlN884HdMUpAcNkRw_ucThIbzF';
 const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
-let cart=[], participants=[], sales=[], commission=10, connected=false;
+let cart=[], participants=[], sales=[], commission=10, connected=false, salesChannel=null;
 const $=id=>document.getElementById(id);
 const euro=n=>(Number(n)||0).toLocaleString('de-DE',{style:'currency',currency:'EUR'});
 const cents=n=>Math.round((Number(n)||0)*100);
@@ -103,7 +103,8 @@ async function connect(){
   participants=p.data||[];sales=(s.data||[]).filter(x=>x.payment_status!=='cancelled');
   if(st.data&&st.data[0]&&st.data[0].commission_percent!=null)commission=Number(st.data[0].commission_percent);
   $('commission').value=commission;fillSelect($('participant'));fillSelect($('settleNo'));connected=true;say('Mit der Datenbank verbunden. Prüfe die Teilnehmerliste vor dem Einsatz.');renderCart();renderTotals();renderSettlement();
-  sb.channel('sales-live').on('postgres_changes',{event:'*',schema:'public',table:'sales'},async()=>{await loadSales()}).subscribe();
+  if(salesChannel){await sb.removeChannel(salesChannel);salesChannel=null;}
+  salesChannel=sb.channel('sales-live').on('postgres_changes',{event:'*',schema:'public',table:'sales'},async()=>{await loadSales()}).subscribe();
  }catch(e){connected=false;$('appContent').classList.add('hidden');$('loginPanel').classList.remove('hidden');$('loginStatus').textContent='Anmeldung oder Datenbankzugriff fehlgeschlagen: '+(e.message||e);$('loginStatus').className='status err';}
 }
 async function loadSales(){const {data,error}=await sb.from('sales').select('*').order('created_at',{ascending:false}).limit(5000);if(!error){sales=(data||[]).filter(x=>x.payment_status!=='cancelled');renderTotals();renderSettlement()}}
