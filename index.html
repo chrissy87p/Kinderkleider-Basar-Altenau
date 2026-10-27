@@ -25,6 +25,15 @@ table{width:100%;border-collapse:collapse;font-size:14px}td,th{text-align:left;p
 <body>
 <header><h1>👕 Kinderkleider Basar Altenau</h1><p>Kassen-App · Veranstaltung 01.11.2026</p></header>
 <main>
+<div id="loginPanel" class="panel">
+ <h2>Anmeldung</h2>
+ <p class="muted">Bitte mit dem in Supabase angelegten Benutzer anmelden.</p>
+ <label for="loginEmail">E-Mail-Adresse</label><input id="loginEmail" type="email" autocomplete="username" placeholder="Deine E-Mail-Adresse" required>
+ <label for="loginPassword">Passwort</label><input id="loginPassword" type="password" autocomplete="current-password" placeholder="Passwort" required>
+ <div class="actions"><button id="loginButton" class="primary">Anmelden</button></div>
+ <div id="loginStatus" class="status" aria-live="polite">Bitte anmelden, um die Kasse zu öffnen.</div>
+</div>
+<div id="appContent" class="hidden">
 <div id="status" class="status">Verbinde mit der Basar-Datenbank …</div>
 <div class="panel">
  <div class="row">
@@ -66,6 +75,8 @@ table{width:100%;border-collapse:collapse;font-size:14px}td,th{text-align:left;p
 <section id="settings" class="page hidden">
  <div class="panel"><h2>Einstellungen</h2><label for="commission">Provision (%)</label><input id="commission" type="number" min="0" max="100" step="0.5" value="10"><div class="actions"><button id="saveCommission" class="primary">Provision speichern</button></div><p class="muted">Diese Version verbindet sich mit dem vorhandenen Supabase-Projekt. Verwende den Publishable Key, niemals einen Secret-/Service-Role-Key.</p></div>
 </section>
+<div class="actions"><button id="logoutButton" class="danger">Abmelden</button></div>
+</div>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
@@ -81,7 +92,8 @@ function fillSelect(el,includeInactive=false){el.innerHTML='';for(let n=1;n<=53;
 async function connect(){
  try{
   const {data:auth}=await sb.auth.getSession();
-  if(!auth.session){const {error}=await sb.auth.signInAnonymously();if(error)throw error}
+  if(!auth.session){$('appContent').classList.add('hidden');$('loginPanel').classList.remove('hidden');return}
+  $('loginPanel').classList.add('hidden');$('appContent').classList.remove('hidden');
   const [p,s,st]=await Promise.all([
    sb.from('participants').select('*').order('no'),
    sb.from('sales').select('*').order('created_at',{ascending:false}).limit(5000),
@@ -92,7 +104,7 @@ async function connect(){
   if(st.data&&st.data[0]&&st.data[0].commission_percent!=null)commission=Number(st.data[0].commission_percent);
   $('commission').value=commission;fillSelect($('participant'));fillSelect($('settleNo'));connected=true;say('Mit der Datenbank verbunden. Prüfe die Teilnehmerliste vor dem Einsatz.');renderCart();renderTotals();renderSettlement();
   sb.channel('sales-live').on('postgres_changes',{event:'*',schema:'public',table:'sales'},async()=>{await loadSales()}).subscribe();
- }catch(e){connected=false;say('Verbindung fehlgeschlagen: '+(e.message||e)+' Prüfe Supabase Anonymous Sign-ins und Datenbankrechte.',true)}
+ }catch(e){connected=false;$('appContent').classList.add('hidden');$('loginPanel').classList.remove('hidden');$('loginStatus').textContent='Anmeldung oder Datenbankzugriff fehlgeschlagen: '+(e.message||e);$('loginStatus').className='status err';}
 }
 async function loadSales(){const {data,error}=await sb.from('sales').select('*').order('created_at',{ascending:false}).limit(5000);if(!error){sales=(data||[]).filter(x=>x.payment_status!=='cancelled');renderTotals();renderSettlement()}}
 function centsTotal(){return cart.reduce((a,x)=>a+cents(x.price),0)}
@@ -149,6 +161,19 @@ $('csv').onclick=()=>{
  const csv=lines.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(';')).join('\r\n');
  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'}));a.download=`Abrechnung_Teilnehmer_${no}.csv`;a.click();URL.revokeObjectURL(a.href)
 };
-connect();
+$('loginButton').onclick=async()=>{
+ const email=$('loginEmail').value.trim(),password=$('loginPassword').value;
+ if(!email||!password){$('loginStatus').textContent='Bitte E-Mail-Adresse und Passwort eingeben.';$('loginStatus').className='status err';return}
+ $('loginButton').disabled=true;$('loginStatus').textContent='Anmeldung läuft …';$('loginStatus').className='status';
+ const {error}=await sb.auth.signInWithPassword({email,password});
+ $('loginButton').disabled=false;
+ if(error){$('loginStatus').textContent='Anmeldung fehlgeschlagen: '+error.message;$('loginStatus').className='status err';return}
+ $('loginStatus').textContent='Angemeldet. Datenbank wird geladen.';
+ await connect();
+};
+$('logoutButton').onclick=async()=>{
+ await sb.auth.signOut();connected=false;cart=[];$('appContent').classList.add('hidden');$('loginPanel').classList.remove('hidden');$('loginPassword').value='';$('loginStatus').textContent='Du bist abgemeldet.';$('loginStatus').className='status';
+};
+(async()=>{const {data}=await sb.auth.getSession();if(data.session){await connect()}else{$('appContent').classList.add('hidden');$('loginPanel').classList.remove('hidden')}})();
 </script>
 </body></html>
