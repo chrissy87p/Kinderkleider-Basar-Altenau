@@ -53,8 +53,10 @@ table{width:100%;border-collapse:collapse;font-size:14px}td,th{text-align:left;p
  </div>
  <div id="scanFields" class="hidden">
   <div class="row"><div><label for="size">Größe (optional)</label><input id="size" placeholder="z. B. 104"></div><div><label for="desc">Beschreibung (optional)</label><input id="desc" placeholder="z. B. T-Shirt"></div></div>
-  <label for="photo">Etikett fotografieren (Erkennungshilfe)</label><input id="photo" type="file" accept="image/*" capture="environment">
-  <p class="muted">Die Fotoerkennung ist in dieser ersten Version noch nicht automatisch aktiv. Bitte Nummer und Preis vom Etikett ablesen und prüfen.</p>
+  <label for="photo">Etikett fotografieren oder Foto auswählen</label><input id="photo" type="file" accept="image/*" capture="environment">
+  <div class="actions"><button id="recognize" type="button">📷 Aufkleber auslesen</button></div>
+  <div id="ocrStatus" class="status" aria-live="polite">Foto auswählen und „Aufkleber auslesen“ antippen. Erkennung kann bei Handschrift ungenau sein.</div>
+  <label for="ocrText">Erkannter Text – bitte prüfen</label><textarea id="ocrText" rows="3" style="width:100%;font:inherit;border:1px solid #bdccc2;border-radius:9px;padding:11px" placeholder="Hier erscheint der erkannte Text"></textarea>
   <label><input id="twoX" type="checkbox" style="width:auto"> Auf dem Etikett steht „2x“ – bitte prüfen (Preis wird nicht verdoppelt).</label>
  </div>
  <div class="actions"><button id="add" class="primary">Artikel zum Warenkorb</button><button id="clear" class="danger">Warenkorb leeren</button></div>
@@ -120,6 +122,36 @@ function renderCart(){
 function updateChange(){const paid=Number($('cashGiven').value);const t=centsTotal()/100;$('change').textContent=$('cashGiven').value===''?'–':euro(paid-t);$('pay').disabled=!cart.length||!connected||!Number.isFinite(paid)||paid<t}
 function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 $('mode').onchange=()=>{$('scanFields').classList.toggle('hidden',$('mode').value!=='scan')};
+let ocrWorkerPromise=null;
+async function getOcrWorker(){
+ if(ocrWorkerPromise)return ocrWorkerPromise;
+ ocrWorkerPromise=(async()=>{
+  if(!window.Tesseract){
+   await new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';script.onload=resolve;script.onerror=()=>reject(new Error('Texterkennung konnte nicht geladen werden. Bitte Internetverbindung prüfen.'));document.head.appendChild(script)});
+  }
+  return await window.Tesseract.createWorker('deu+eng');
+ })();
+ try{return await ocrWorkerPromise}catch(e){ocrWorkerPromise=null;throw e}
+}
+$('recognize').onclick=async()=>{
+ const file=$('photo').files&&$('photo').files[0];
+ if(!file){$('ocrStatus').textContent='Bitte zuerst ein Foto aufnehmen oder auswählen.';$('ocrStatus').className='status err';return}
+ $('recognize').disabled=true;$('ocrStatus').textContent='Foto wird gelesen … Das kann einen Moment dauern.';$('ocrStatus').className='status';
+ try{
+  const worker=await getOcrWorker();
+  const result=await worker.recognize(file);
+  const text=(result.data&&result.data.text||'').trim();
+  $('ocrText').value=text;
+  // Nur eindeutige, vorsichtige Vorschläge übernehmen; Teilnehmernummer immer manuell prüfen.
+  const prices=[...text.matchAll(/(?:€|eur)?\s*(\d{1,3}[,.]\d{2}|\d{1,2})\s*(?:€|eur)?/gi)].map(m=>Number(m[1].replace(',','.'))).filter(n=>n>=0.5&&n<=500&&Math.abs(n*2-Math.round(n*2))<0.001);
+  if(prices.length===1)$('price').value=prices[0].toFixed(2);
+  const sizeMatch=text.match(/(?:gr(?:öße)?\.?\s*)?(\d{2,3})/i);
+  if(sizeMatch&&Number(sizeMatch[1])>=44&&Number(sizeMatch[1])<=188)$('size').value=sizeMatch[1];
+  $('ocrStatus').textContent=text?'Erkennung fertig. Bitte den Text und insbesondere Teilnehmernummer und Preis mit dem Aufkleber vergleichen. Es wurde nichts gebucht.':'Es wurde kein Text sicher erkannt. Bitte Angaben manuell eintragen.';
+  $('ocrStatus').className='status';
+ }catch(e){$('ocrStatus').textContent='Erkennung nicht möglich: '+(e.message||e)+' Bitte Nummer und Preis manuell eingeben.';$('ocrStatus').className='status err'}
+ finally{$('recognize').disabled=false}
+};
 $('add').onclick=()=>{
  const no=Number($('participant').value),price=Number($('price').value),p=participants.find(x=>Number(x.no)===no);
  if(!p||p.active===false){say('Diese Teilnehmernummer ist nicht aktiv. Bitte Nummer prüfen.',true);return}
