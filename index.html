@@ -68,6 +68,7 @@ table{width:100%;border-collapse:collapse;font-size:14px}td,th{text-align:left;p
 </section>
 <section id="control" class="page hidden">
  <div class="panel"><h2>Kassenkontrolle</h2><div id="totals" class="muted">Lade Umsätze …</div><div class="actions"><button id="refresh" class="primary">Aktualisieren</button></div></div>
+ <div class="panel"><h2>Letzte Verkäufe</h2><p class="muted">Hier kannst du einen bereits gespeicherten Verkauf stornieren. Er bleibt als storniert in der Datenbank erhalten und wird nicht mehr mitgerechnet.</p><div id="recentSales" class="muted">Lade Verkäufe …</div></div>
 </section>
 <section id="settle" class="page hidden">
  <div class="panel"><h2>Teilnehmer-Abrechnung</h2><label for="settleNo">Teilnehmernummer</label><select id="settleNo"></select><div id="settlement" class="muted">Teilnehmer auswählen.</div><div class="actions"><button id="csv" class="primary">CSV-Abrechnung herunterladen</button></div></div>
@@ -102,12 +103,12 @@ async function connect(){
   if(p.error)throw p.error;if(s.error)throw s.error;
   participants=p.data||[];sales=(s.data||[]).filter(x=>x.payment_status!=='cancelled');
   if(st.data&&st.data[0]&&st.data[0].commission_percent!=null)commission=Number(st.data[0].commission_percent);
-  $('commission').value=commission;fillSelect($('participant'));fillSelect($('settleNo'));connected=true;say('Mit der Datenbank verbunden. Prüfe die Teilnehmerliste vor dem Einsatz.');renderCart();renderTotals();renderSettlement();
+  $('commission').value=commission;fillSelect($('participant'));fillSelect($('settleNo'));connected=true;say('Mit der Datenbank verbunden. Prüfe die Teilnehmerliste vor dem Einsatz.');renderCart();renderTotals();renderSettlement();renderRecentSales();
   if(salesChannel){await sb.removeChannel(salesChannel);salesChannel=null;}
   salesChannel=sb.channel('sales-live').on('postgres_changes',{event:'*',schema:'public',table:'sales'},async()=>{await loadSales()}).subscribe();
  }catch(e){connected=false;$('appContent').classList.add('hidden');$('loginPanel').classList.remove('hidden');$('loginStatus').textContent='Anmeldung oder Datenbankzugriff fehlgeschlagen: '+(e.message||e);$('loginStatus').className='status err';}
 }
-async function loadSales(){const {data,error}=await sb.from('sales').select('*').order('created_at',{ascending:false}).limit(5000);if(!error){sales=(data||[]).filter(x=>x.payment_status!=='cancelled');renderTotals();renderSettlement()}}
+async function loadSales(){const {data,error}=await sb.from('sales').select('*').order('created_at',{ascending:false}).limit(5000);if(!error){sales=(data||[]).filter(x=>x.payment_status!=='cancelled');renderTotals();renderSettlement();renderRecentSales()}}
 function centsTotal(){return cart.reduce((a,x)=>a+cents(x.price),0)}
 function renderCart(){
  const el=$('cartList');el.innerHTML='';
@@ -140,6 +141,19 @@ function renderTotals(){
  const sum=n=>sales.filter(x=>Number(x.register_no)===n).reduce((a,x)=>a+cents(x.price),0)/100;
  const all=sales.reduce((a,x)=>a+cents(x.price),0)/100;
  $('totals').innerHTML=`<div class="item"><span>Kasse 1</span><strong>${euro(sum(1))}</strong></div><div class="item"><span>Kasse 2</span><strong>${euro(sum(2))}</strong></div><div class="item"><strong>Gesamtumsatz</strong><span class="big">${euro(all)}</span></div><p>${sales.length} gespeicherte Artikel</p>`;
+}
+function renderRecentSales(){
+ const el=$('recentSales');if(!sales.length){el.textContent='Keine aktiven Verkäufe vorhanden.';return}
+ el.innerHTML='';
+ sales.slice(0,30).forEach(x=>{const p=participants.find(y=>Number(y.no)===Number(x.participant_no));const d=document.createElement('div');d.className='item';const date=x.created_at?new Date(x.created_at).toLocaleString('de-DE',{dateStyle:'short',timeStyle:'short'}):'Zeit unbekannt';d.innerHTML=`<span><strong>${date}</strong><br>Teilnehmer ${escapeHtml(x.participant_no)}${p&&p.name?' – '+escapeHtml(p.name):''}<br>${escapeHtml('Kasse '+x.register_no)} · ${euro(x.price)}</span><button class="danger" data-cancel-sale="${escapeHtml(x.id)}">Stornieren</button>`;el.appendChild(d)});
+ el.querySelectorAll('[data-cancel-sale]').forEach(b=>b.onclick=()=>cancelSale(b.dataset.cancelSale));
+}
+async function cancelSale(id){
+ const sale=sales.find(x=>String(x.id)===String(id));if(!sale){say('Verkauf nicht gefunden. Bitte aktualisieren.',true);return}
+ if(!confirm(`Diesen Verkauf wirklich stornieren?\nTeilnehmer ${sale.participant_no} · ${euro(sale.price)} · Kasse ${sale.register_no}\nDer Betrag wird aus den Summen und Abrechnungen herausgerechnet.`))return;
+ const {error}=await sb.from('sales').update({payment_status:'cancelled'}).eq('id',sale.id);
+ if(error){say('Storno fehlgeschlagen: '+error.message,true);return}
+ await loadSales();say('Verkauf wurde storniert und wird nicht mehr mitgerechnet.');
 }
 $('refresh').onclick=loadSales;
 function renderSettlement(){
